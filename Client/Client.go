@@ -1,17 +1,22 @@
 package Client
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"log"
 	"net"
-	"time"
+	"os"
+	"sync"
 )
+
+var mute = make(chan bool)
 
 const SockAddr = "/home/ilya/OS/echo.sock"
 
 type Client struct {
-	c net.Conn
+	c  net.Conn
+	mu sync.Mutex
 }
 
 func NewClient() *Client {
@@ -22,7 +27,7 @@ func NewClient() *Client {
 	return &Client{c: c}
 }
 
-func reader(r io.Reader) {
+func (c *Client) reader(r io.Reader) {
 	buf := make([]byte, 4096)
 	for {
 		n, err := r.Read(buf[:])
@@ -30,26 +35,27 @@ func reader(r io.Reader) {
 			println(err)
 			return
 		}
-		println("Client got:", string(buf[0:n]))
+		println("Client got:\"", string(buf[0:n]), "\"")
+		mute <- true
 	}
 }
 
-func (s *Client) ListenAndServe() {
-	defer (*s).c.Close()
+func (c *Client) ListenAndServe() {
+	defer (*c).c.Close()
 
-	go reader((*s).c)
+	go (*c).reader((*c).c)
 	for {
 		fmt.Println("Enter your message:")
 		var text string
-		_, err := fmt.Scanf("%s", &text)
-		if err != nil {
-			continue
+		scanner := bufio.NewScanner(os.Stdin)
+		if scanner.Scan() {
+			text = scanner.Text()
+
 		}
-		message := string(rune(len(text))) + ": " + text
-		_, err = (*s).c.Write([]byte(message))
+		_, err := (*c).c.Write([]byte(text))
 		if err != nil {
 			log.Fatal("write error:", err)
 		}
-		time.Sleep(1e9)
+		<-mute
 	}
 }
